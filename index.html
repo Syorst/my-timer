@@ -3,85 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <!-- PWA 设置 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="5分倒计时">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/180/000000/FFFFFF?text=5Min">
-
-    <title>5分倒计时</title>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>极简倒计时</title>
     <style>
-        :root { --bg-color: #000; --text-color: #fff; --accent: #ff3b30; }
-        body { 
-            margin: 0; background: var(--bg-color); color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh; overflow: hidden; user-select: none;
+        /* 1. 基础样式：黑底白字，强制占满屏幕 */
+        * { box-sizing: border-box; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background-color: #000; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            overflow: hidden;
         }
-        /* 时间显示：超大字体，居中 */
-        #timer { 
-            font-size: 28vw; 
-            font-variant-numeric: tabular-nums; 
-            font-weight: 100;
-            letter-spacing: -2px;
+
+        /* 2. 计时器居中：使用 vw 单位确保自适应 */
+        #container {
+            text-align: center;
+            width: 100%;
         }
-        /* 交互提示 */
-        #hint {
-            position: absolute; bottom: 10%; font-size: 14px; color: #666;
+
+        #timer {
+            font-size: 32vw; /* 超大字体 */
+            font-weight: 200;
+            font-variant-numeric: tabular-nums; /* 防止数字跳动 */
+            line-height: 1;
+            margin: 0;
+            transition: color 0.5s ease;
         }
-        /* 正在计时的视觉反馈（呼吸灯效果） */
-        .running #timer { color: var(--accent); transition: 0.3s; }
+
+        #status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* 倒计时结束时的视觉效果 */
+        .finished #timer { color: #ff3b30; font-weight: 500; }
     </style>
 </head>
-<body onclick="toggleTimer()">
+<body onclick="togglePause()">
 
-    <div id="timer">05:00</div>
-    <div id="hint">点击屏幕：暂停/恢复</div>
+    <div id="container">
+        <div id="timer">05:00</div>
+        <div id="status">正在计时 (点击暂停)</div>
+    </div>
 
     <script>
-        let countdown;
-        let timeLeft = 300; // 默认 5 分钟
+        let timeLeft = 300;
         let isPaused = false;
+        let wakeLock = null;
 
-        // 页面一加载就执行
+        // 启动逻辑
         window.onload = () => {
-            startTimer();
+            requestWakeLock(); // 请求防止息屏
+            startCountdown();
         };
 
-        function updateDisplay(seconds) {
-            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const s = (seconds % 60).toString().padStart(2, '0');
+        function updateDisplay() {
+            const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+            const s = (timeLeft % 60).toString().padStart(2, '0');
             document.getElementById('timer').innerText = `${m}:${s}`;
         }
 
-        function startTimer() {
-            if (countdown) clearInterval(countdown);
-            document.body.classList.add('running');
-            
-            countdown = setInterval(() => {
+        function startCountdown() {
+            const interval = setInterval(() => {
                 if (!isPaused) {
                     timeLeft--;
-                    updateDisplay(timeLeft);
+                    updateDisplay();
                     if (timeLeft <= 0) {
-                        clearInterval(countdown);
-                        document.body.classList.remove('running');
-                        alert("时间到！");
+                        clearInterval(interval);
+                        document.body.classList.add('finished');
+                        document.getElementById('status').innerText = "时间到";
+                        releaseWakeLock(); // 结束后允许息屏
                     }
                 }
             }, 1000);
         }
 
-        // 简单的暂停/恢复逻辑
-        function toggleTimer() {
+        function togglePause() {
             isPaused = !isPaused;
-            document.getElementById('hint').innerText = isPaused ? "已暂停，点击继续" : "点击屏幕：暂停/恢复";
-            if (isPaused) {
-                document.body.classList.remove('running');
-            } else {
-                document.body.classList.add('running');
+            document.getElementById('status').innerText = isPaused ? "已暂停 (点击继续)" : "正在计时 (点击暂停)";
+        }
+
+        // ---核心：防止息屏代码---
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('防止息屏已激活');
+                }
+            } catch (err) {
+                console.log('无法激活防止息屏:', err.message);
             }
         }
+
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+        }
+
+        // 页面切换回来时重新激活锁（防止从后台切回失效）
+        document.addEventListener('visibilitychange', () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        });
     </script>
 </body>
 </html>
