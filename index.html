@@ -7,110 +7,119 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>极简倒计时</title>
     <style>
-        /* 1. 基础样式：黑底白字，强制占满屏幕 */
-        * { box-sizing: border-box; }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             background-color: #000; color: #fff;
             display: flex; align-items: center; justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-            overflow: hidden;
+            overflow: hidden; touch-action: manipulation;
         }
-
-        /* 2. 计时器居中：使用 vw 单位确保自适应 */
-        #container {
-            text-align: center;
-            width: 100%;
+        #container { text-align: center; width: 100%; }
+        #timer { 
+            font-size: 32vw; font-weight: 200; 
+            font-variant-numeric: tabular-nums; line-height: 1;
         }
-
-        #timer {
-            font-size: 32vw; /* 超大字体 */
-            font-weight: 200;
-            font-variant-numeric: tabular-nums; /* 防止数字跳动 */
-            line-height: 1;
-            margin: 0;
-            transition: color 0.5s ease;
+        #status { 
+            margin-top: 20px; font-size: 14px; color: #666; 
+            letter-spacing: 2px; text-transform: uppercase; 
         }
-
-        #status {
-            margin-top: 20px;
-            font-size: 14px;
-            color: #666;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-        }
-
-        /* 倒计时结束时的视觉效果 */
-        .finished #timer { color: #ff3b30; font-weight: 500; }
+        /* 隐藏视频，仅用于保活 */
+        #insomnia-video { position: absolute; width: 1px; height: 1px; opacity: 0.01; }
     </style>
 </head>
-<body onclick="togglePause()">
+<body onclick="handleUserInteraction()">
+
+    <!-- 兜底视频：一段极短的空白视频 Base64 -->
+    <video id="insomnia-video" loop playsinline muted>
+        <source src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAAG1kYXQ=" type="video/mp4">
+    </video>
 
     <div id="container">
         <div id="timer">05:00</div>
-        <div id="status">正在计时 (点击暂停)</div>
+        <div id="status">点击屏幕开始计时</div>
     </div>
 
     <script>
         let timeLeft = 300;
-        let isPaused = false;
+        let isPaused = true;
         let wakeLock = null;
+        let interval = null;
 
-        // 启动逻辑
-        window.onload = () => {
-            requestWakeLock(); // 请求防止息屏
-            startCountdown();
-        };
-
+        // 更新显示
         function updateDisplay() {
             const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
             const s = (timeLeft % 60).toString().padStart(2, '0');
             document.getElementById('timer').innerText = `${m}:${s}`;
         }
 
-        function startCountdown() {
-            const interval = setInterval(() => {
-                if (!isPaused) {
-                    timeLeft--;
-                    updateDisplay();
-                    if (timeLeft <= 0) {
-                        clearInterval(interval);
-                        document.body.classList.add('finished');
-                        document.getElementById('status').innerText = "时间到";
-                        releaseWakeLock(); // 结束后允许息屏
+        // 处理用户交互（iOS 必须由点击触发音视频和锁）
+        function handleUserInteraction() {
+            if (isPaused) {
+                resumeTimer();
+            } else {
+                pauseTimer();
+            }
+        }
+
+        function resumeTimer() {
+            isPaused = false;
+            document.getElementById('status').innerText = "正在计时 (点击暂停)";
+            
+            // 1. 尝试激活官方锁
+            requestWakeLock();
+            
+            // 2. 激活视频保活
+            const video = document.getElementById('insomnia-video');
+            video.play().catch(e => console.log("视频保活失败", e));
+
+            if (!interval) {
+                interval = setInterval(() => {
+                    if (!isPaused && timeLeft > 0) {
+                        timeLeft--;
+                        updateDisplay();
+                        if (timeLeft <= 0) {
+                            clearInterval(interval);
+                            interval = null;
+                            document.getElementById('status').innerText = "时间到";
+                            releaseWakeLock();
+                        }
                     }
-                }
-            }, 1000);
+                }, 1000);
+            }
         }
 
-        function togglePause() {
-            isPaused = !isPaused;
-            document.getElementById('status').innerText = isPaused ? "已暂停 (点击继续)" : "正在计时 (点击暂停)";
+        function pauseTimer() {
+            isPaused = true;
+            document.getElementById('status').innerText = "已暂停 (点击继续)";
+            const video = document.getElementById('insomnia-video');
+            video.pause();
+            releaseWakeLock();
         }
 
-        // ---核心：防止息屏代码---
+        // --- 防止息屏核心函数 ---
         async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
+            if ('wakeLock' in navigator) {
+                try {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('防止息屏已激活');
+                    console.log('Wake Lock 已激活');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
                 }
-            } catch (err) {
-                console.log('无法激活防止息屏:', err.message);
             }
         }
 
         function releaseWakeLock() {
-            if (wakeLock !== null) {
+            if (wakeLock) {
                 wakeLock.release();
                 wakeLock = null;
             }
         }
 
-        // 页面切换回来时重新激活锁（防止从后台切回失效）
+        // 处理后台切回
         document.addEventListener('visibilitychange', () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible' && !isPaused) {
                 requestWakeLock();
+                document.getElementById('insomnia-video').play();
             }
         });
     </script>
