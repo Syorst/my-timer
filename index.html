@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA 核心标签：让它在 iOS 上像个 App -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="极简倒计时">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/180/000000/FFFFFF?text=Timer">
+
+    <title>极简倒计时</title>
+    <style>
+        :root { --bg-color: #000; --text-color: #fff; }
+        body { 
+            margin: 0; background: var(--bg-color); color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+        }
+        #timer { font-size: 25vw; font-variant-numeric: tabular-nums; font-weight: 200; }
+        #controls { margin-top: 20px; display: flex; gap: 10px; }
+        input { 
+            background: #222; border: 1px solid #444; color: #fff; 
+            padding: 10px; border-radius: 8px; width: 60px; text-align: center; font-size: 18px;
+        }
+        button {
+            background: #fff; color: #000; border: none; padding: 10px 20px;
+            border-radius: 8px; font-weight: bold; cursor: pointer;
+        }
+        /* 全屏后隐藏输入框，只留数字 */
+        .running #controls { opacity: 0.1; transition: 0.5s; }
+        .running #controls:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div id="timer">00:00</div>
+
+    <div id="controls">
+        <input type="number" id="minutes" placeholder="分" value="25">
+        <button onclick="startTimer()">开始计时</button>
+        <button onclick="resetTimer()" style="background:#555; color:#fff">重置</button>
+    </div>
+
+    <script>
+        let countdown;
+        let timeLeft;
+
+        function updateDisplay(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer').innerText = `${m}:${s}`;
+        }
+
+        function startTimer() {
+            clearInterval(countdown);
+            const mins = document.getElementById('minutes').value;
+            timeLeft = mins * 60;
+            document.body.classList.add('running');
+
+            countdown = setInterval(() => {
+                timeLeft--;
+                updateDisplay(timeLeft);
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    alert("时间到！");
+                    document.body.classList.remove('running');
+                }
+            }, 1000);
+        }
+
+        function resetTimer() {
+            clearInterval(countdown);
+            document.body.classList.remove('running');
+            updateDisplay(document.getElementById('minutes').value * 60);
+        }
+    </script>
+</body>
+</html>
